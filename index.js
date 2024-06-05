@@ -32,7 +32,7 @@ async function run() {
     const articleCollection = client.db('NewsDB').collection('articles')
 
     app.get('/articles', async(req, res) => {
-        const result = await articleCollection.find().toArray()
+        const result = await articleCollection.find().sort({views: -1}).toArray()
         res.send(result)
     })
     
