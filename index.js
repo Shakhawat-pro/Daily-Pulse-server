@@ -7,7 +7,6 @@ const { MongoClient, ServerApiVersion, Admin } = require('mongodb');
 const port = process.env.PORT || 5000
 
 
-
 // middleware
 
 app.use(cors())
