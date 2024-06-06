@@ -71,6 +71,8 @@ async function run() {
       res.send(result)
     })
 
+    
+
     app.get('/user/isPremium/:email',verifyToken, async(req, res) => {
       const email = req.params.email
       const query = { email: email }
