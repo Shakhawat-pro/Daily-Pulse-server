@@ -110,7 +110,7 @@ async function run() {
       console.log(user?.premiumTaken);
       res.send({ isUserPremium })
     })
-
+    
     app.post('/users', async (req, res) => {
       const user = req.body;
       console.log(user);
@@ -124,9 +124,6 @@ async function run() {
     })
 
     
-
-
-
 
 
 
