@@ -47,6 +47,7 @@ async function run() {
 
     const articleCollection = client.db('NewsDB').collection('articles')
     const userCollection = client.db('NewsDB').collection('users')
+    const publisherCollection = client.db('NewsDB').collection('publishers')
 
     
     // jWT API
@@ -64,14 +65,35 @@ async function run() {
       res.send(result)
     })
 
+
+    app.post('/articles',verifyToken, async(req,res) => {
+      const data = req.body
+      const email = req.decoded.email
+      const user = await userCollection.findOne({email : email})
+      if(user.premiumTaken !== null){
+        const result = await articleCollection.insertOne(data)
+        return res.json({ message: 'Article posted successfully', result });
+      }
+      const existingArticle  = await articleCollection.findOne({'author.email' : email})
+      if(existingArticle){
+        return res.json({ message: 'Non-premium users can only post one article' });
+      }
+      const result = await articleCollection.insertOne(data);
+      return res.json({ message: 'Article posted successfully', result });     
+    })
+
+    // publishers related api
+    app.get('/publishers', async(req, res) =>{
+      const result = await publisherCollection.find().toArray()
+      res.send(result)
+    })
+
     // user related api
 
     app.get('/users', async(req, res) => {
       const result = await userCollection.find().toArray()
       res.send(result)
     })
-
-    
 
     app.get('/user/isPremium/:email',verifyToken, async(req, res) => {
       const email = req.params.email
