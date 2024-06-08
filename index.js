@@ -179,6 +179,28 @@ async function run() {
       const result = await userCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
+    
+    app.patch('/users/guest/:id', verifyToken,  async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc = {
+        $set: {
+          role: 'user'
+        }
+      }
+      const result = await userCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+
+
+    app.delete('/users/:id', verifyToken, async (req, res) => {
+      const id = req.params.id
+      const query = { _id: new ObjectId(id) }
+      const result = await userCollection.deleteOne(query);
+      res.send(result)
+    })
+
 
 
 
