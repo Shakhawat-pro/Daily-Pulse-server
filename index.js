@@ -86,26 +86,39 @@ async function run() {
     //Admin Articles
 
     app.get('/articles', async (req, res) => {
-      const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
-      res.send(result)
+      const { search, publisher, tags } = req.query;
+      let query = { status: 'approved' };
+      if (search) {
+        query.title = { $regex: search, $options: 'i' };
+      }
+      if (publisher) {
+        query.publisher = publisher;
+      }
+      if (tags) {
+        query.tags = { $all: tags.split(',') };
+    }
+    const articles = await articleCollection.find(query).sort({ views: -1 }).toArray();
+      // const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
+      res.send(articles)
     })
-    app.get('/myArticles',verifyToken, async(req, res) =>{
+
+    app.get('/myArticles', verifyToken, async (req, res) => {
       const email = req.decoded.email
       console.log(email);
       const result = await articleCollection.find({ "author.email": email }).toArray()
       res.send(result)
     })
-    app.get('/myArticles/:id',verifyToken, async(req, res) =>{
+    app.get('/myArticles/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
       const result = await articleCollection.findOne(filter)
       res.send(result)
     })
-    app.patch('/myArticles/:id',verifyToken, async(req, res) =>{
+    app.patch('/myArticles/:id', verifyToken, async (req, res) => {
       const data = req.body
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
-      const updatedDoc ={
+      const updatedDoc = {
         $set: {
           title: data.title,
           image: data.image,
