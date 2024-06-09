@@ -84,7 +84,7 @@ async function run() {
       res.send({ token })
     })
 
-    // Articles
+    //Admin Articles
 
     app.get('/articles', async (req, res) => {
       const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
@@ -92,6 +92,49 @@ async function run() {
     })
     app.get('/allArticles', async (req, res) => {
       const result = await articleCollection.find().toArray()
+      res.send(result)
+    })
+    app.patch('/allArticles/accept/:id', verifyToken, async(req,res) =>{
+      const id = req.params.id
+      const filter = {_id: new ObjectId(id)}
+      const updatedDoc ={
+        $set: {
+          status: "approved"
+        }
+      }  
+      const result = await articleCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+    app.patch('/allArticles/premium/:id', verifyToken, async(req,res) =>{
+      const id = req.params.id
+      const filter = {_id: new ObjectId(id)}
+      const updatedDoc ={
+        $set: {
+          isPremium: true
+        }
+      }  
+      const result = await articleCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+    app.patch('/allArticles/reject/:id', verifyToken, async(req,res) =>{
+      const id = req.params.id
+      const rejectReason = req.body
+      console.log(rejectReason);
+      const filter = {_id: new ObjectId(id)}
+      const updatedDoc ={
+        $set: {
+          status: "rejected" ,
+          reason: rejectReason.reason
+        }
+      }  
+      const result = await articleCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+    app.delete('/allArticles/:id', verifyToken, async (req, res) => {
+      const id = req.params.id
+      const query = { _id: new ObjectId(id) }
+      const result = await articleCollection.deleteOne(query);
       res.send(result)
     })
 
@@ -118,6 +161,7 @@ async function run() {
       return res.json({ message: 'Article posted successfully', result });
     })
 
+    
     // publishers related api
     app.get('/publishers', async (req, res) => {
       const result = await publisherCollection.find().toArray()
