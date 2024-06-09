@@ -90,6 +90,11 @@ async function run() {
       const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
       res.send(result)
     })
+    app.get('/allArticles', async (req, res) => {
+      const result = await articleCollection.find().toArray()
+      res.send(result)
+    })
+
     app.get('/premiumArticles', verifyToken, verifyPremium, async (req, res) => {
       const result = await articleCollection.find({ isPremium: true }).sort({ views: -1 }).toArray()
       // console.log(result);
@@ -191,9 +196,6 @@ async function run() {
       const result = await userCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
-
-
-
     app.delete('/users/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const query = { _id: new ObjectId(id) }
