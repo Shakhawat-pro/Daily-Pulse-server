@@ -28,18 +28,6 @@ const verifyToken = (req, res, next) => {
   })
 }
 
-// use verify admin after verifyToken
-const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.email;
-  const query = { email: email };
-  const user = await userCollection.findOne(query);
-  const isAdmin = user?.role === 'admin';
-  if (!isAdmin) {
-    return res.status(403).send({ message: 'forbidden access' });
-  }
-  next();
-}
-
 
 
 
@@ -74,6 +62,17 @@ async function run() {
       }
       next();
     }
+    // use verify admin after verifyToken
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === 'admin';
+      if (!isAdmin) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      next();
+    }
 
 
     // jWT API
@@ -90,43 +89,79 @@ async function run() {
       const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
       res.send(result)
     })
+    app.get('/myArticles',verifyToken, async(req, res) =>{
+      const email = req.decoded.email
+      console.log(email);
+      const result = await articleCollection.find({ "author.email": email }).toArray()
+      res.send(result)
+    })
+    app.get('/myArticles/:id',verifyToken, async(req, res) =>{
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const result = await articleCollection.findOne(filter)
+      res.send(result)
+    })
+    app.patch('/myArticles/:id',verifyToken, async(req, res) =>{
+      const data = req.body
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc ={
+        $set: {
+          title: data.title,
+          image: data.image,
+          tags: data.tags,
+          description: data.description,
+          content: data.content,
+          author: {
+            name: data.author.name,
+            email: data.author.email,
+            photo: data.author.photo
+          },
+          status: "pending"
+        }
+      }
+      // console.log(updatedDoc);
+      const result = await articleCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
     app.get('/allArticles', async (req, res) => {
       const result = await articleCollection.find().toArray()
       res.send(result)
     })
-    app.patch('/allArticles/accept/:id', verifyToken, async(req,res) =>{
+    app.patch('/allArticles/accept/:id', verifyToken, async (req, res) => {
       const id = req.params.id
-      const filter = {_id: new ObjectId(id)}
-      const updatedDoc ={
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc = {
         $set: {
           status: "approved"
         }
-      }  
+      }
       const result = await articleCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
-    app.patch('/allArticles/premium/:id', verifyToken, async(req,res) =>{
+    app.patch('/allArticles/premium/:id', verifyToken, async (req, res) => {
       const id = req.params.id
-      const filter = {_id: new ObjectId(id)}
-      const updatedDoc ={
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc = {
         $set: {
           isPremium: true
         }
-      }  
+      }
       const result = await articleCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
-    app.patch('/allArticles/reject/:id', verifyToken, async(req,res) =>{
+    app.patch('/allArticles/reject/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const rejectReason = req.body
       console.log(rejectReason);
-      const filter = {_id: new ObjectId(id)}
-      const updatedDoc ={
+      const filter = { _id: new ObjectId(id) }
+      const updatedDoc = {
         $set: {
-          status: "rejected" ,
+          status: "rejected",
           reason: rejectReason.reason
         }
-      }  
+      }
       const result = await articleCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
@@ -161,10 +196,17 @@ async function run() {
       return res.json({ message: 'Article posted successfully', result });
     })
 
-    
+
     // publishers related api
     app.get('/publishers', async (req, res) => {
       const result = await publisherCollection.find().toArray()
+      res.send(result)
+    })
+
+    app.post('/publishers', verifyToken, verifyAdmin, async (req, res) => {
+      const data = req.body
+      console.log(data);
+      const result = await publisherCollection.insertOne(data)
       res.send(result)
     })
 
@@ -191,18 +233,18 @@ async function run() {
       res.send({ isUserPremium })
     })
 
-    app.get('/user/admin/:email', verifyToken, async(req, res) =>{
+    app.get('/user/admin/:email', verifyToken, async (req, res) => {
       const email = req.params.email
-      if(email !== req.decoded.email){
+      if (email !== req.decoded.email) {
         return res.status(401).send({ message: 'Unauthorized Access' })
       }
       const query = { email: email }
       const user = await userCollection.findOne(query)
       let admin = false
-      if(user){
+      if (user) {
         admin = user?.role === "admin"
       }
-      res.send({admin})
+      res.send({ admin })
     })
 
     app.post('/users', async (req, res) => {
@@ -217,7 +259,7 @@ async function run() {
       res.send(result)
     })
 
-    app.patch('/users/admin/:id', verifyToken,  async (req, res) => {
+    app.patch('/users/admin/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
       const updatedDoc = {
@@ -228,8 +270,8 @@ async function run() {
       const result = await userCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
-    
-    app.patch('/users/guest/:id', verifyToken,  async (req, res) => {
+
+    app.patch('/users/guest/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
       const updatedDoc = {
