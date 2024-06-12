@@ -6,6 +6,9 @@ require('dotenv').config()
 const { MongoClient, ServerApiVersion, Admin, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY)
+
+
 
 // middleware
 
@@ -50,6 +53,7 @@ async function run() {
     const articleCollection = client.db('NewsDB').collection('articles')
     const userCollection = client.db('NewsDB').collection('users')
     const publisherCollection = client.db('NewsDB').collection('publishers')
+    const paymentCollection = client.db("NewsDB").collection("payments");
 
     // use verify Premium after verifyToken
     const verifyPremium = async (req, res, next) => {
@@ -96,24 +100,27 @@ async function run() {
       }
       if (tags) {
         query.tags = { $all: tags.split(',') };
-    }
-    const articles = await articleCollection.find(query).sort({ views: -1 }).toArray();
-      // const result = await articleCollection.find({ status: 'approved' }).sort({ views: -1 }).toArray()
+      }
+      const articles = await articleCollection.find(query).sort({ views: -1 }).toArray();
       res.send(articles)
     })
 
     app.get('/myArticles', verifyToken, async (req, res) => {
       const email = req.decoded.email
-      console.log(email);
+      // console.log(email);
       const result = await articleCollection.find({ "author.email": email }).toArray()
       res.send(result)
     })
+
     app.get('/myArticles/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
-      const result = await articleCollection.findOne(filter)
+      const update = { $inc: { views: 1 } };
+      const options = { returnOriginal: false };
+      const result = await articleCollection.findOneAndUpdate(filter, update, options)
       res.send(result)
     })
+    
     app.patch('/myArticles/:id', verifyToken, async (req, res) => {
       const data = req.body
       const id = req.params.id
@@ -138,10 +145,23 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/allArticles', async (req, res) => {
-      const result = await articleCollection.find().toArray()
-      res.send(result)
-    })
+    app.get('/allArticles', verifyToken, async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      const articles = await articleCollection.find().skip(skip).limit(limit).toArray();
+      const totalArticles = await articleCollection.countDocuments();
+
+      res.send({
+        articles,
+        totalArticles,
+        totalPages: Math.ceil(totalArticles / limit),
+        currentPage: page
+      });
+
+    });
+
     app.patch('/allArticles/accept/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const filter = { _id: new ObjectId(id) }
@@ -167,7 +187,7 @@ async function run() {
     app.patch('/allArticles/reject/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const rejectReason = req.body
-      console.log(rejectReason);
+      // console.log(rejectReason);
       const filter = { _id: new ObjectId(id) }
       const updatedDoc = {
         $set: {
@@ -226,8 +246,34 @@ async function run() {
     // user related api
 
     app.get('/users', verifyToken, async (req, res) => {
-      const result = await userCollection.find().toArray()
-      res.send(result)
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      const users = await userCollection.find().skip(skip).limit(limit).toArray();
+      const totalUsers = await userCollection.countDocuments();
+
+      res.send({
+        users,
+        totalUsers,
+        totalPages: Math.ceil(totalUsers / limit),
+        currentPage: page
+      });
+
+    });
+
+    app.get('/userCount', async (req, res) => {
+      const allUsersCount = await userCollection.countDocuments();
+
+      const currentDate = new Date();
+      const premiumUsersCount = await userCollection.countDocuments({ premiumTaken: { $ne: null } });
+      const nonPremiumUsersCount = allUsersCount - premiumUsersCount;
+
+      res.send({
+        totalUsers: allUsersCount,
+        premiumUsers: premiumUsersCount,
+        nonPremiumUsers: nonPremiumUsersCount
+      });
     })
 
     app.get('/user/isPremium/:email', verifyToken, async (req, res) => {
@@ -264,10 +310,12 @@ async function run() {
       const user = req.body;
       // console.log(user);
       const query = { email: user.email }
+      console.log(user);
       const existingUser = await userCollection.findOne(query)
       if (existingUser) {
         return res.send({ message: 'user already existed', insertedId: null })
       }
+
       const result = await userCollection.insertOne(user)
       res.send(result)
     })
@@ -295,10 +343,104 @@ async function run() {
       const result = await userCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
+
+
     app.delete('/users/:id', verifyToken, async (req, res) => {
       const id = req.params.id
       const query = { _id: new ObjectId(id) }
       const result = await userCollection.deleteOne(query);
+      res.send(result)
+    })
+
+    app.patch('/update-premium', async (req, res) => {
+      const data = req.body
+      console.log(data);
+      const filter = { email: data.email }
+      const updatedPremium = {
+        $set: {
+          premiumTaken: data.premiumTaken
+        }
+      }
+      const result = await userCollection.updateOne(filter, updatedPremium)
+      console.log(result);
+      res.send(result)
+    })
+
+    // payment intent
+    app.post('/create-payment-intent', async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      // console.log(amount, 'amount inside the intent')
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    });
+
+    app.get('/user/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+    app.patch('/user/:email', async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const updatedPremium = {
+        $set: {
+          premiumTaken: null
+        }
+      }
+      const result = await userCollection.updateOne(filter, updatedPremium);
+      res.send(result);
+    });
+
+
+    app.patch('/profile/:email', async (req, res) => {
+      const data = req.body
+      const email = req.params.email;
+      const filter = { email: email };
+      const updateProfile = {
+        $set: {
+          name: data.name,
+          profilePicture: data.photoURL,
+
+        }
+      }
+      const result = await userCollection.updateOne(filter, updateProfile);
+      res.send(result);
+    });
+
+    app.patch('/homePage/showIt/:id', async(req, res) =>{
+      const id = req.params.id
+      const filter = {_id: new ObjectId(id)}
+      const update ={
+        $set:{
+          editorPick: true
+        }
+      }
+      const result = await articleCollection.updateOne(filter, update)
+      res.send(result)
+    })
+    app.patch('/homePage/hideIt/:id', async(req, res) =>{
+      const id = req.params.id
+      const filter = {_id: new ObjectId(id)}
+      const update ={
+        $set:{
+          editorPick: false
+        }
+      }
+      const result = await articleCollection.updateOne(filter, update)
+      res.send(result)
+    })
+    app.get('/editorArticles', async(req, res) =>{
+      const result = await articleCollection.find({"editorPick" : true}).toArray()
       res.send(result)
     })
 
@@ -307,10 +449,9 @@ async function run() {
 
 
 
-
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
